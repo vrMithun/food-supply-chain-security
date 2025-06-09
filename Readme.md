@@ -1,7 +1,6 @@
 # Food Supply Chain Security Using Homomorphic MAC and Merkle Tree
 
 ## Abstract
-
 This project presents a secure and efficient approach for food supply chain management by integrating homomorphic Message Authentication Codes (MACs) with Merkle tree data structures.
 
 - **Merkle Tree Layer:** Frequently updated sensor data (temperature, humidity, location) is stored in a Merkle tree, where each node is augmented with homomorphic MACs to allow authenticated updates and tamper-evident integrity verification.
@@ -60,8 +59,5 @@ This dual-layer system ensures fine-grained traceability alongside efficient, pr
 
 ## Contact
 
-For questions or contributions, please reach out to:
-
-[Your Name]  
-[Your Email]  
-[GitHub Repository Link]
+**Mithun, Jei Akash**  
+Email: mithuncsegvsraja@gmail.com  
