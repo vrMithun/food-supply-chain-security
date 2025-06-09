@@ -1,0 +1,8 @@
+{
+  "sensor_data": [
+    {"timestamp": "2024-06-01 10:00", "temperature": 25.5, "humidity": 70, "location": "Zone A"},
+    {"timestamp": "2024-06-01 10:05", "temperature": 26.0, "humidity": 68, "location": "Zone A"},
+    {"timestamp": "2024-06-01 10:10", "temperature": 27.2, "humidity": 66, "location": "Zone A"},
+    {"timestamp": "2024-06-01 10:15", "temperature": 26.5, "humidity": 65, "location": "Zone A"}
+  ]
+}
