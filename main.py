@@ -7,114 +7,93 @@ from merkle_tool.merkle import (
     hash_sensor_entry
 )
 
-from hmac_tool.hmac import (
-    generate_key,
-    generate_mac,
-    verify_aggregate_mac
-)
-
+from hmac_tool.hmac import HMACTree  # Updated HMAC Tree
+from decimal import Decimal
 import json
 
-# --- Merkle Tree Section ---
-leaves = load_sensor_data('data/sensor_values.json')
+print("\n--- Loading Initial Sensor Data ---")
+raw_data, leaves = load_sensor_data('data/sensor_values.json')
 tree = build_merkle_tree(leaves)
 root = get_merkle_root(tree)
-
 print(f"Merkle Root: {root}")
 
-# Choose a leaf index to test
+# Choose a leaf to verify
 test_index = 2
-leaf = leaves[test_index]
 proof = get_merkle_proof(tree, test_index)
-
 print(f"Proof for leaf index {test_index}: {proof}")
+valid = verify_merkle_proof(leaves[test_index], proof, root, test_index)  # PASS index here
+print(f"Merkle Proof Verification: {valid}")
 
-# Verify the proof
-valid = verify_merkle_proof(leaf, proof, root)
-print(f"Verification result: {valid}")
+# --- HMAC Tree Section ---
+print("\n--- HMAC Tree Section ---")
 
-# --- HMAC Section ---
-print("\n--- HMAC Section ---")
+# Step 1: Initialize HMAC Tree
+key = Decimal('7.25')  # Shared secret key
+hmac_tree = HMACTree(key)
 
-# Step 1: Load original temperature data
-with open('data/sensor_values.json', 'r') as f:
-    raw_data = json.load(f)["sensor_data"]
+# Step 2: Insert data into HMAC Tree
+for entry in raw_data:
+    hmac_tree.insert(entry['timestamp'], entry['temperature'])
 
-# Convert to float and round to 2 decimal places
-temperatures = [round(float(entry["temperature"]), 2) for entry in raw_data]
+# Step 3: Compute and verify aggregates with MACs
+average, min_temp, max_temp, avg_mac, min_mac, max_mac = hmac_tree.compute_aggregates_and_macs()
+print(f"Average Temp: {average}")
+print(f"Min Temp: {min_temp}")
+print(f"Max Temp: {max_temp}")
+print(f"MAC for AVG: {avg_mac}")
+print(f"MAC for MIN: {min_mac}")
+print(f"MAC for MAX: {max_mac}")
 
-# Step 2: Generate secret key
-key = generate_key()
-print(f"Secret Key: {key}")
+# Step 4: Verification
+print(f"Verify AVG MAC: {hmac_tree.verify_aggregate_mac('AVG', average, avg_mac)}")
+print(f"Verify MIN MAC: {hmac_tree.verify_aggregate_mac('MIN', min_temp, min_mac)}")
+print(f"Verify MAX MAC: {hmac_tree.verify_aggregate_mac('MAX', max_temp, max_mac)}")
 
-# Step 3: Generate MACs
-macs = [generate_mac(temp, key) for temp in temperatures]
-print(f"MACs: {macs}")
+# --- Simulate New Sensor Data Insertion ---
+print("\n--- Simulate New Sensor Data Insertion ---")
+new_entry = {
+    "timestamp": "2025-06-15T18:00:00Z",
+    "temperature": 29.3,
+    "humidity": 65,
+    "location": "Zone-C"
+}
 
-# Step 4: Compute average
-average = round(sum(temperatures) / len(temperatures), 2)
-print(f"Average Temperature: {average}")
-
-# Step 5: Verify average using HMAC
-tag_sum = sum(macs)
-valid = verify_aggregate_mac(average, len(temperatures), key, tag_sum)
-print(f"HMAC Verification for Average: {valid}")
-
-# Step 6: Simulate update (frequent update scenario)
-update_index = 2
-new_temp = round(28.0, 2)
-
-# Update data
-old_temp = temperatures[update_index]
-temperatures[update_index] = new_temp
-macs[update_index] = generate_mac(new_temp, key)
-
-# Recompute values
-updated_average = round(sum(temperatures) / len(temperatures), 2)
-updated_tag_sum = sum(macs)
-
-print("\n--- After Updating Index 2 ---")
-print(f"Old Temp: {old_temp} -> New Temp: {new_temp}")
-print(f"Updated Average Temperature: {updated_average}")
-
-# Verify updated average
-valid = verify_aggregate_mac(updated_average, len(temperatures), key, updated_tag_sum)
-print(f"Updated HMAC Verification for Average: {valid}")
-
-# --- Merkle Tree Update Simulation ---
-print("\n--- Merkle Tree Update Simulation ---")
-
-# Update raw data (simulate tampering)
-new_data = raw_data[update_index].copy()
-new_data["temperature"] = 30.0  # Changed value
-
-# Update the corresponding leaf
-leaves[update_index] = hash_sensor_entry(new_data)
-
-# Rebuild the tree and get new root
+# Insert into Merkle Tree
+raw_data.append(new_entry)
+leaves.append(hash_sensor_entry(new_entry))
 updated_tree = build_merkle_tree(leaves)
 updated_root = get_merkle_root(updated_tree)
 
+# Insert into HMAC Tree
+hmac_tree.insert(new_entry["timestamp"], new_entry["temperature"])
+
+# Recompute and verify updated aggregates
+updated_avg, updated_min, updated_max, updated_avg_mac, updated_min_mac, updated_max_mac = hmac_tree.compute_aggregates_and_macs()
 print(f"Updated Merkle Root: {updated_root}")
-print("Data Tampered!" if updated_root != root else "No Tampering Detected.")
+print(f"Updated Average Temp: {updated_avg}")
+print(f"Updated Min Temp: {updated_min}")
+print(f"Updated Max Temp: {updated_max}")
+print(f"Updated MAC for AVG: {updated_avg_mac}")
+print(f"Updated MAC for MIN: {updated_min_mac}")
+print(f"Updated MAC for MAX: {updated_max_mac}")
+print(f"Updated Verify AVG MAC: {hmac_tree.verify_aggregate_mac('AVG', updated_avg, updated_avg_mac)}")
 
 # --- Tampering Simulation ---
 print("\n--- Tampering Simulation ---")
 
-# Tamper with the temperature without updating hash or MAC
-tampered_temperatures = temperatures.copy()
-tampered_temperatures[1] = 100.0  # unrealistic tampered value
+# Tamper with last entry's temperature
+tampered_entry = raw_data[-1].copy()
+tampered_entry["temperature"] = 100.0  # Simulate unrealistic tamper
 
-# Recalculate average and tag sum without updating MACs
-tampered_average = round(sum(tampered_temperatures) / len(tampered_temperatures), 2)
-tampered_tag_sum = sum(macs)  # MACs were not updated!
+# Verify Merkle proof with tampered data
+tampered_hash = hash_sensor_entry(tampered_entry)
+tampered_index = len(leaves) - 1
+proof = get_merkle_proof(updated_tree, tampered_index)
+valid_merkle = verify_merkle_proof(tampered_hash, proof, updated_root, tampered_index)  # Pass index
+print(f"Merkle Verification After Tampering: {valid_merkle}")
 
-# Verify HMAC with tampered average
-hmac_valid = verify_aggregate_mac(tampered_average, len(tampered_temperatures), key, tampered_tag_sum)
-print(f"HMAC Verification After Tampering: {hmac_valid}")
-
-# Merkle part: verify leaf 1 with old proof against original root
-tampered_leaf = str(tampered_temperatures[1])  # Fake leaf (not proper hash)
-proof = get_merkle_proof(tree, 1)
-merkle_valid = verify_merkle_proof(tampered_leaf, proof, root)
-print(f"Merkle Verification After Tampering: {merkle_valid}")
+# Tampered temperature values
+tampered_temps = [Decimal(str(e["temperature"])) for e in raw_data[:-1]] + [Decimal('100.0')]
+tampered_avg = round(sum(tampered_temps) / len(tampered_temps), 2)
+print(f"Tampered Average: {tampered_avg}")
+print(f"Verify AVG MAC After Tampering: {hmac_tree.verify_aggregate_mac('AVG', tampered_avg, updated_avg_mac)}")
