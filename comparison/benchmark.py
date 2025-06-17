@@ -1,36 +1,66 @@
 import time
 import json
-import sys, os
+import sys
+import os
+from decimal import Decimal
+
+# Add root directory to system path for module access
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from merkle_tool.merkle import build_merkle_tree, get_merkle_root, hash_sensor_entry
-from hmac_tool.hmac import generate_key, generate_mac, verify_aggregate_mac
+from hmac_tool.hmac import HMACTree
 
-# Load sensor data
-with open(r'D:\workspace\food-supply-chain-security\data\sensor_values.json', 'r') as f:
+# --- Load sensor data ---
+data_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'sensor_values.json')
+if not os.path.exists(data_path):
+    raise FileNotFoundError(f"Sensor data file not found at: {data_path}")
+
+with open(data_path, 'r') as f:
     sensor_data = json.load(f)["sensor_data"]
 
-# Prepare temperature list and leaf nodes
-temperatures = [round(float(entry["temperature"]), 2) for entry in sensor_data]
-leaves = [hash_sensor_entry(entry) for entry in sensor_data]
+print(f"Total Data Points: {len(sensor_data)}")
 
-print("--- Benchmarking Merkle Tree ---")
-start = time.time()
-tree = build_merkle_tree(leaves)
-merkle_root = get_merkle_root(tree)
-end = time.time()
-print(f"Merkle Root: {merkle_root}")
-print(f"Merkle Tree Build Time: {round(end - start, 6)} seconds")
+# Split the data
+initial_entries = sensor_data[:10]
+insertion_entries = sensor_data[10:]
 
-print("\n--- Benchmarking HMAC ---")
-key = generate_key()
+# ========== MERKLE TREE BENCHMARK ==========
+print("\n--- Benchmarking Merkle Tree ---")
 
-start = time.time()
-macs = [generate_mac(temp, key) for temp in temperatures]
-average = round(sum(temperatures) / len(temperatures), 2)
-tag_sum = sum(macs)
-hmac_valid = verify_aggregate_mac(average, len(temperatures), key, tag_sum)
-end = time.time()
+# Build phase
+initial_leaves = [hash_sensor_entry(entry) for entry in initial_entries]
+start_build = time.perf_counter()
+merkle_tree = build_merkle_tree(initial_leaves)
+merkle_root = get_merkle_root(merkle_tree)
+end_build = time.perf_counter()
 
-print(f"HMAC Verification: {hmac_valid}")
-print(f"HMAC Processing Time: {round(end - start, 6)} seconds")
+# Insertion phase (simulate full rebuilds for each new entry)
+insert_start = time.perf_counter()
+for entry in insertion_entries:
+    initial_leaves.append(hash_sensor_entry(entry))
+    merkle_tree = build_merkle_tree(initial_leaves)  # Rebuild
+insert_end = time.perf_counter()
+
+print(f"Merkle Root after initial build: {merkle_root}")
+print(f"Initial Merkle Build Time: {round(end_build - start_build, 6)} seconds")
+print(f"Merkle Tree Insertion (Rebuild) Time: {round(insert_end - insert_start, 6)} seconds")
+
+# ========== HMAC TREE BENCHMARK ==========
+print("\n--- Benchmarking HMAC Tree ---")
+key = Decimal('7.25')
+hmac_tree = HMACTree(key)
+
+# Build phase
+start_build = time.perf_counter()
+for entry in initial_entries:
+    hmac_tree.insert(entry["timestamp"], entry["temperature"])
+end_build = time.perf_counter()
+
+# Insertion phase
+insert_start = time.perf_counter()
+for entry in insertion_entries:
+    hmac_tree.insert(entry["timestamp"], entry["temperature"])
+insert_end = time.perf_counter()
+
+print(f"Initial HMAC Tree Build Time: {round(end_build - start_build, 6)} seconds")
+print(f"HMAC Tree Insertion (Rebuild) Time: {round(insert_end - insert_start, 6)} seconds")
